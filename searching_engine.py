@@ -30,7 +30,7 @@ class Searcher:
         print(f'Dataset is {dataset}')
         print('Documents list creating...')
         for i in tqdm(range(number_of_data)):
-            docs.append(dataset['test'][i]['text'])
+            docs.append(dataset['train'][i]['text'])
         return docs
 
     @staticmethod
