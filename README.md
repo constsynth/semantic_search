@@ -1,1 +1,1 @@
-# semantic_search
+# RAG Gradio App using BERT embeddings and BART summarization model
