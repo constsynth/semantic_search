@@ -2,6 +2,7 @@ from transformers import BertModel, BertTokenizer
 import torch
 import typing as tp
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 from datasets import load_dataset
 from tqdm import tqdm
 import gc
@@ -9,13 +10,20 @@ import gc
 
 class Searcher:
     def __init__(self,
-                 model_name_or_path: str = 'DeepPavlov/rubert-base-cased',
-                 number_of_data: int = 500):
-        self.device = torch.device('cuda:0')
-        self.documents = self.create_documents(number_of_data=number_of_data)
-        self.model, self.tokenizer = self.init_model(model_name_or_path)
-        self.model.to(self.device)
-        self.document_embeddings = self.vectorize_documents(self.documents)
+                 model_name_or_path: str = 'intfloat/multilingual-e5-base',
+                 number_of_data: int = 500,
+                 create_database: bool = False):
+
+        self.model = SentenceTransformer(model_name_or_path=model_name_or_path,
+                                         device='cuda:0' if torch.cuda.is_available() else 'cpu')
+        if create_database:
+            self.documents = self.create_documents(number_of_data=number_of_data)
+            self.document_embeddings = self.vectorize(self.documents)
+            self.cleanup_memory()
+        else:
+            self.documents = []
+            self.document_embeddings = None
+            self.cleanup_memory()
 
     @staticmethod
     def cleanup_memory():
@@ -33,40 +41,54 @@ class Searcher:
             docs.append(dataset['train'][i]['text'])
         return docs
 
+    def update_docs(self, new_doc: str = None) -> tp.NoReturn:
+        self.documents.append(new_doc)
+        embeddings = self.vectorize(new_doc)
+        if self.document_embeddings is not None:
+            self.document_embeddings = torch.cat((self.document_embeddings, embeddings), dim=0)
+        else:
+            self.document_embeddings = embeddings
+        self.cleanup_memory()
+
     @staticmethod
     def init_model(model_name_or_path: str = None):
         model = BertModel.from_pretrained(model_name_or_path)
         tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
         return model, tokenizer
 
-    def vectorize_documents(self,
-                            documents: tp.List[str]) -> torch.Tensor:
-        document_embeddings = []
+    def vectorize(self,
+                  documents: list[str] | str = None) -> torch.Tensor:
         print('\nDatabase embeddings creating...')
-        for document in tqdm(documents):
-            inputs = self.tokenizer(document,
-                                    return_tensors="pt",
-                                    padding=True,
-                                    truncation=True,
-                                    max_length=128)
-            outputs = self.model(**inputs.to(self.device))
-            document_embedding = outputs.last_hidden_state.mean(dim=1)
-            document_embeddings.append(document_embedding.detach().cpu())
-        document_embeddings = torch.cat(document_embeddings)
+        documents_embeddings = []
+        if isinstance(documents, list):
+            for document in documents:
+                document_embedding = self.model.encode(sentences=document,
+                                                       device='cuda:0',
+                                                       convert_to_tensor=True,
+                                                       normalize_embeddings=True)
+                document_embedding = torch.unsqueeze(document_embedding, 0)
+                documents_embeddings.append(document_embedding)
+            documents_embeddings = torch.cat(documents_embeddings)
+
+        elif isinstance(documents, str):
+            documents_embeddings = self.model.encode(sentences=documents,
+                                                     device='cuda:0',
+                                                     convert_to_tensor=True,
+                                                     normalize_embeddings=True)
+            documents_embeddings = torch.unsqueeze(documents_embeddings, 0)
+
+        else:
+            raise TypeError('documents must be a list of str or str')
+
         self.cleanup_memory()
-        return document_embeddings
+        return documents_embeddings
 
     def find_closest_results(self, query: str = None,
                              first_n_closest: int = 5) -> tp.List[str]:
-        user_query_inputs = self.tokenizer(query,
-                                           return_tensors="pt",
-                                           padding=True,
-                                           max_length=128)
-        user_query_outputs = self.model(**user_query_inputs.to(self.device))
-        user_query_embedding = user_query_outputs.last_hidden_state.mean(dim=1)
-
-        similarities = cosine_similarity(user_query_embedding.detach().cpu(),
-                            self.document_embeddings).tolist()
+        user_query_embedding = self.model.encode(query, device='cuda:0', convert_to_tensor=True)
+        user_query_embedding = torch.unsqueeze(user_query_embedding, 0)
+        similarities = cosine_similarity(user_query_embedding.cpu().numpy(),
+                                         self.document_embeddings.cpu().numpy()).tolist()
         similarities = {idx: score for idx, score in enumerate(similarities[0])}
         similarities_sorted_dict = dict(sorted(similarities.items(), key=lambda item: item[1], reverse=True))
         closest_results_indexes = list(similarities_sorted_dict.keys())[:first_n_closest]
