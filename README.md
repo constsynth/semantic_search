@@ -1,1 +1,1 @@
-# RAG Gradio App using BERT embeddings and BART summarization model
+# RAG Gradio App using E5 multi-langual embeddings and BART summarization model

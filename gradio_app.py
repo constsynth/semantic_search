@@ -5,7 +5,7 @@ from pypdf import PdfReader
 
 
 searcher = Searcher(model_name_or_path='intfloat/multilingual-e5-base',
-                    number_of_data=10,
+                    number_of_data=5000,
                     create_database=True)
 
 summarizer = Summarizer(model_name_or_path='IlyaGusev/mbart_ru_sum_gazeta')
@@ -48,7 +48,6 @@ def search(query, first_n_closest,
 
 
 search = gr.Interface(
-    # theme=gr.themes.Soft(),
     fn=search,
     inputs=[gr.Textbox(label='Найти новость по запросу'),
             gr.Slider(label='Количество новостей',
@@ -64,8 +63,6 @@ search = gr.Interface(
 
 add_to_database = gr.Interface(
     fn=add_new_file,
-    # inputs=gr.UploadButton(label='Загрузить файл в базу данных',
-    #                        file_types=['.pdf']),
     inputs=gr.File(label='Загрузите свой документ', file_types=['.pdf']),
     outputs=gr.Textbox(label='Статус внесенных изменений'),
     allow_flagging='never'
