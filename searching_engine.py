@@ -1,4 +1,3 @@
-from transformers import BertModel, BertTokenizer
 import torch
 import typing as tp
 from sklearn.metrics.pairwise import cosine_similarity
@@ -49,12 +48,6 @@ class Searcher:
         else:
             self.document_embeddings = embeddings
         self.cleanup_memory()
-
-    @staticmethod
-    def init_model(model_name_or_path: str = None):
-        model = BertModel.from_pretrained(model_name_or_path)
-        tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
-        return model, tokenizer
 
     def vectorize(self,
                   documents: list[str] | str = None) -> torch.Tensor:
